@@ -1,0 +1,1 @@
+docker run --gpus all -it --rm --shm-size=8g -v $(pwd):/usr/src/app sign-language-processing

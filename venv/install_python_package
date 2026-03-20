@@ -1,0 +1,28 @@
+# 1. Download and Compile Python 3.11
+cd $HOME
+wget https://www.python.org/ftp/python/3.11.9/Python-3.11.9.tgz
+tar -xvf Python-3.11.9.tgz
+cd Python-3.11.9
+
+# Configure strictly for your user (no root needed)
+# Note: Ensure you use '$HOME', not 'SHOME' (which was likely a typo in your screenshot)
+./configure --prefix=$HOME/python3.11 --enable-optimizations
+
+# Build (This will take 5-10 minutes)
+make -j$(nproc)
+make install
+
+# 2. Create your Virtual Environment using this new Python
+# We point directly to the binary we just built
+$HOME/python3.11/bin/python3.11 -m venv jsl-venv
+
+# 3. Activate the Virtual Environment
+source jsl-venv/bin/activate
+
+# 4. Verify
+python --version
+# Output should be: Python 3.11.9
+
+# 5. Install Required Packages
+pip install --upgrade pip
+pip install -r jsl_requirements.txt

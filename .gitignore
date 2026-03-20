@@ -1,0 +1,5 @@
+data/
+logs/
+outputs/
+saved_models/
+slurm_scripts/
