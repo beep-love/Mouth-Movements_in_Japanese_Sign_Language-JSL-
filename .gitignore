@@ -3,3 +3,14 @@ logs/
 outputs/
 saved_models/
 slurm_scripts/
+__pycache__/
+*.pyc
+*.pkl
+*.pt
+*.ckpt
+*.log
+*.csv
+*.json
+*.zip
+*.tar.gz
+*.tar
