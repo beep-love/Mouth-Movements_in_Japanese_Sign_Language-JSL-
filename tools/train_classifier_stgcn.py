@@ -30,7 +30,7 @@ def main():
     )
     
     parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--lr", type=float, default=0.001)      # Slightly higher LR is safe for GCNs
+    parser.add_argument("--lr", type=float, default=0.0003)      # Slightly higher LR is safe for GCNs
     parser.add_argument("--batch_size", type=int, default=64)
     args = parser.parse_args()
 
@@ -113,12 +113,20 @@ def main():
         class_counts[int(lbl)] += 1
         
     print(f"\n[INFO] Train Set Class Counts: {class_counts.tolist()}")
-    weights = 1.0 / (class_counts + 1e-6)
+    weights = 1.0 / torch.sqrt(class_counts + 1e-6)
     weights = weights / weights.min()
+
+    # Clamp extreme weights to a reasonable range (e.g., max weight of 10) to prevent instability
+    # weights = torch.clamp(weights, max=10.0)
+
     print(f"[INFO] Applied Class Weights: {weights.tolist()}\n")
 
     criterion = nn.CrossEntropyLoss(weight=weights.to(device))
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-5)
+
+    # The Scheduler :- This will cut the LR by 50% (factor=0.5) if the validation loss doesn't improve for 5 epochs (patience=5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', factor=0.5, patience=5, verbose=True)
 
     epoch_train_losses, epoch_valid_losses, epoch_accuracies = [], [], []
     best_acc = 0.0
@@ -128,7 +136,7 @@ def main():
     # ---------------------------------------------------------
     # BATCH HELPER (Coordinate Extraction Only)
     # ---------------------------------------------------------
-    def prepare_batch(batch):
+    def prepare_batch(batch, is_training=False):
         lengths = batch['lengths'].to(device)
         labels = batch['labels'].to(device)
         
@@ -142,6 +150,17 @@ def main():
                 
         # Concat into [B, T, Total_Features]
         l_seq = torch.cat(lm_parts, dim=-1) 
+
+        # --- KINEMATIC AUGMENTATION ---
+        if is_training:
+            # Coordinate Jitter: Add tiny random noise to coordinates
+            # This simulates slight tracking errors from MediaPipe and prevents memorization
+            noise = torch.randn_like(l_seq) * 0.005  # 0.5% screen width variance
+            l_seq = l_seq + noise
+            
+            # Random Global Scaling: Make the whole face/body 5% bigger or smaller
+            scale = torch.empty(l_seq.size(0), 1, 1).uniform_(0.95, 1.05).to(device)
+            l_seq = l_seq * scale
         return l_seq, lengths, labels
 
     # ---------------------------------------------------------
@@ -152,7 +171,7 @@ def main():
         total_loss = 0.0
 
         for batch in train_loader:
-            l_seq, lengths, labels = prepare_batch(batch)
+            l_seq, lengths, labels = prepare_batch(batch, is_training=True)
 
             optimizer.zero_grad()
             # ST-GCN forward pass takes (x, lengths)
@@ -172,7 +191,7 @@ def main():
 
         with torch.no_grad():
             for batch in valid_loader:
-                l_seq, lengths, labels = prepare_batch(batch)
+                l_seq, lengths, labels = prepare_batch(batch, is_training=False)
                 
                 outputs = model(l_seq, lengths)
                 loss = criterion(outputs, labels)
@@ -188,6 +207,9 @@ def main():
         epoch_accuracies.append(accuracy)
 
         print(f"Epoch [{epoch+1}/{args.epochs}] | Train Loss: {train_loss:.4f} | Val Loss: {valid_loss:.4f} | Acc: {accuracy*100:.2f}%")
+        
+        # NEW: Tell the scheduler what the validation loss was so it can adjust!
+        scheduler.step(valid_loss)
         
         if accuracy > best_acc:
             best_acc = accuracy

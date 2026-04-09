@@ -157,17 +157,20 @@ def main():
     print(f"\n[INFO] Train Set Class Counts: {class_counts.tolist()}")
 
     # Calculate inverse frequency weights
-    weights = 1.0 / (class_counts + 1e-6)
-    
+    weights = 1.0 / torch.sqrt(class_counts + 1e-6)
+
     # Normalize so the majority class gets a weight of ~1.0
     weights = weights / weights.min()
+
+    # Clamp extreme weights to a reasonable range (e.g., max weight of 10) to prevent instability
+    # weights = torch.clamp(weights, max=10.0)
     
     print(f"[INFO] Applied Class Weights: {weights.tolist()}\n")
 
     # Inject the weights into the Loss Function
     criterion = nn.CrossEntropyLoss(weight=weights.to(device))
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-5)
 
     epoch_train_losses, epoch_valid_losses, epoch_accuracies = [], [], []
     best_acc = 0.0
